@@ -1,30 +1,37 @@
-FROM runpod/base:0.6.2-cuda12.4.1
+FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
 
-WORKDIR /app
-
-# Only libsndfile — no git needed at runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
 
-# torch only (no torchaudio — saves ~500 MB)
+WORKDIR /app
+
+# Install chatterbox-tts without deps to avoid PyTorch conflicts with base image
+RUN pip install --no-cache-dir --no-deps chatterbox-tts
+
+# Chatterbox deps (no torch/torchaudio — already in base image)
 RUN pip install --no-cache-dir \
-    torch \
-    --index-url https://download.pytorch.org/whl/cu124
+    conformer \
+    s3tokenizer \
+    librosa \
+    resemble-perth \
+    huggingface_hub \
+    safetensors \
+    transformers \
+    diffusers \
+    einops \
+    soundfile \
+    scipy \
+    omegaconf \
+    pyloudnorm \
+    numpy \
+    runpod
 
-# Runtime deps
-RUN pip install --no-cache-dir chatterbox-tts soundfile runpod numpy
+# Pre-bake model weights — cold start = VRAM load only
+RUN python -c "from chatterbox.tts import ChatterboxTTS; print('Downloading model...'); ChatterboxTTS.from_pretrained(device='cpu'); print('Done.')" \
+    && find /root/.cache/huggingface -name "*.lock" -delete 2>/dev/null || true \
+    && find /root/.cache/huggingface -name "tmp*"   -delete 2>/dev/null || true
 
-# Pre-bake model weights — cold start = VRAM load only, no HuggingFace download
-# Clean HF cache temp files after download to save space
-RUN python3 -c "\
-from chatterbox.tts import ChatterboxTTS; \
-ChatterboxTTS.from_pretrained(device='cpu'); \
-print('Model weights cached.')" \
-    && find /root/.cache/huggingface -name "*.lock" -delete \
-    && find /root/.cache/huggingface -name "tmp*" -delete \
-    && find /root/.cache/pip -type f -delete 2>/dev/null || true
+COPY handler.py /app/handler.py
 
-COPY handler.py .
-
-CMD ["python3", "-u", "handler.py"]
+CMD ["python", "-u", "/app/handler.py"]
