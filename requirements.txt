@@ -1,6 +1,5 @@
-runpod
-chatterbox-tts
-numpy
-soundfile
-torch
-torchaudio
+runpod>=1.6.0
+soundfile>=0.12.0
+numpy>=1.24.0
+scipy>=1.10.0
+chatterbox-tts>=0.1.0
